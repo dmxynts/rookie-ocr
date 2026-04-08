@@ -9,6 +9,7 @@ import openai
 import pyperclip
 import io
 from config import BAIDU_OCR_CONFIG, OPENAI_API_KEY
+import easyocr
 
 def get_font():
     """获取可用的中文字体"""
@@ -23,7 +24,7 @@ def get_font():
     for font_path in font_paths:
         if os.path.exists(font_path):
             try:
-                font = ImageFont.truetype(font_path, 14)  # 减小字体大小
+                font = ImageFont.truetype(font_path, 14)  # 恢复到14号字体
                 print(f"使用字体: {font_path}")
                 return font
             except Exception as e:
@@ -94,13 +95,32 @@ def ocr_image(image_path, app_id, api_key, secret_key):
     
     if "words_result" in result:
         text = "\n".join([item["words"] for item in result["words_result"]])
-        print("OCR 识别结果:")
+        print("百度OCR 识别结果:")
         print(text)
         pyperclip.copy(text)
         print("识别结果已复制到剪贴板")
         return text
     else:
-        print("OCR 识别失败:", result)
+        print("百度OCR 识别失败:", result)
+        return ""
+
+def easy_ocr_image(image_path):
+    """使用EasyOCR进行图像识别"""
+    print("开始 EasyOCR 识别...")
+    # 初始化EasyOCR读取器
+    reader = easyocr.Reader(['ch_sim', 'en'], gpu=False)
+    # 识别图像
+    result = reader.readtext(image_path)
+    
+    if result:
+        text = "\n".join([item[1] for item in result])
+        print("EasyOCR 识别结果:")
+        print(text)
+        pyperclip.copy(text)
+        print("识别结果已复制到剪贴板")
+        return text
+    else:
+        print("EasyOCR 识别失败")
         return ""
 
 def get_ai_response(text, api_key):
@@ -210,6 +230,47 @@ def show_image_with_copy_button(image_path, ocr_text):
         close_button.pack(pady=10)
         
         error_root.mainloop()
+
+def draw_rounded_rectangle(draw, xy, radius, fill=None, outline=None, width=0):
+    """绘制圆角矩形"""
+    x1, y1, x2, y2 = xy
+    # 绘制四个角的圆弧
+    draw.arc([x1, y1, x1 + 2*radius, y1 + 2*radius], 180, 270, fill=fill, width=width)
+    draw.arc([x2 - 2*radius, y1, x2, y1 + 2*radius], 270, 0, fill=fill, width=width)
+    draw.arc([x1, y2 - 2*radius, x1 + 2*radius, y2], 90, 180, fill=fill, width=width)
+    draw.arc([x2 - 2*radius, y2 - 2*radius, x2, y2], 0, 90, fill=fill, width=width)
+    # 绘制中间的矩形
+    draw.rectangle([x1 + radius, y1, x2 - radius, y2], fill=fill, outline=outline, width=width)
+    draw.rectangle([x1, y1 + radius, x2, y2 - radius], fill=fill, outline=outline, width=width)
+
+def draw_ocr_icon(draw, center, size, color):
+    """绘制OCR图标"""
+    # 绘制放大镜
+    draw.ellipse([center[0] - size//2, center[1] - size//2, center[0] + size//2, center[1] + size//2], outline=color, width=2)
+    # 绘制放大镜手柄
+    draw.line([center[0] + size//2, center[1], center[0] + size, center[1] + size//2], fill=color, width=2)
+
+def draw_copy_icon(draw, center, size, color):
+    """绘制复制图标"""
+    # 绘制剪贴板
+    draw.rectangle([center[0] - size//2, center[1] - size//3, center[0] + size//2, center[1] + size//3], outline=color, width=2)
+    draw.line([center[0] - size//2, center[1] - size//3, center[0] - size//3, center[1] - size//2], fill=color, width=2)
+    draw.line([center[0] + size//2, center[1] - size//3, center[0] + size//3, center[1] - size//2], fill=color, width=2)
+
+def draw_cancel_icon(draw, center, size, color):
+    """绘制取消图标"""
+    # 绘制叉号
+    draw.line([center[0] - size//2, center[1] - size//2, center[0] + size//2, center[1] + size//2], fill=color, width=2)
+    draw.line([center[0] + size//2, center[1] - size//2, center[0] - size//2, center[1] + size//2], fill=color, width=2)
+
+def draw_easy_ocr_icon(draw, center, size, color):
+    """绘制EasyOCR图标"""
+    # 绘制简单的文字识别图标
+    draw.rectangle([center[0] - size//2, center[1] - size//2, center[0] + size//2, center[1] + size//2], outline=color, width=2)
+    # 绘制文字线条
+    draw.line([center[0] - size//3, center[1] - size//4, center[0] + size//3, center[1] - size//4], fill=color, width=2)
+    draw.line([center[0] - size//3, center[1], center[0] + size//3, center[1]], fill=color, width=2)
+    draw.line([center[0] - size//3, center[1] + size//4, center[0] + size//3, center[1] + size//4], fill=color, width=2)
 
 def take_screenshot():
     print("请选择截图区域...")
@@ -342,18 +403,21 @@ def take_screenshot():
         button_size = 40  # 减小按钮大小
         button_margin = 8  # 减小按钮间距
         button_y = y2 + 10  # 按钮位置在框选区域下方
+        radius = 8  # 圆角半径
         
         # 计算按钮位置 - 居中显示在框选区域下方
-        total_button_width = 3 * button_size + 2 * button_margin
+        total_button_width = 4 * button_size + 3 * button_margin
         start_x = x1 + (x2 - x1 - total_button_width) // 2
         
         ocr_button_x = start_x
-        copy_button_x = start_x + button_size + button_margin
-        cancel_button_x = start_x + 2 * button_size + 2 * button_margin
+        easy_ocr_button_x = start_x + button_size + button_margin
+        copy_button_x = start_x + 2 * button_size + 2 * button_margin
+        cancel_button_x = start_x + 3 * button_size + 3 * button_margin
         
         # 按钮区域
         buttons = {
             "ocr": (ocr_button_x, button_y, ocr_button_x + button_size, button_y + button_size),
+            "easy_ocr": (easy_ocr_button_x, button_y, easy_ocr_button_x + button_size, button_y + button_size),
             "copy": (copy_button_x, button_y, copy_button_x + button_size, button_y + button_size),
             "cancel": (cancel_button_x, button_y, cancel_button_x + button_size, button_y + button_size)
         }
@@ -368,25 +432,65 @@ def take_screenshot():
             draw = ImageDraw.Draw(pil_img)
             
             # OCR按钮 - 蓝色
-            draw.rectangle([buttons["ocr"][0], buttons["ocr"][1], buttons["ocr"][2], buttons["ocr"][3]], fill=(25, 118, 210))
+            draw_rounded_rectangle(draw, buttons["ocr"], radius, fill=(25, 118, 210))
+            # 按钮阴影
+            shadow_offset = 2
+            shadow_rect = (buttons["ocr"][0] + shadow_offset, buttons["ocr"][1] + shadow_offset, 
+                          buttons["ocr"][2] + shadow_offset, buttons["ocr"][3] + shadow_offset)
+            draw_rounded_rectangle(draw, shadow_rect, radius, fill=(0, 0, 0, 50))
+            # 绘制OCR图标
+            ocr_center = (buttons["ocr"][0] + button_size//2, buttons["ocr"][1] + button_size//2)
+            draw_ocr_icon(draw, ocr_center, button_size//2, (255, 255, 255))
+            # 按钮文字
             if font:
-                draw.text((buttons["ocr"][0] + 10, buttons["ocr"][1] + 12), "OCR", font=font, fill=(255, 255, 255))
+                draw.text((buttons["ocr"][0] + 10, buttons["ocr"][1] + 28), "百度", font=font, fill=(255, 255, 255))
             else:
-                draw.text((buttons["ocr"][0] + 10, buttons["ocr"][1] + 12), "OCR", fill=(255, 255, 255))
+                draw.text((buttons["ocr"][0] + 10, buttons["ocr"][1] + 28), "百度", fill=(255, 255, 255))
+            
+            # EasyOCR按钮 - 紫色
+            draw_rounded_rectangle(draw, buttons["easy_ocr"], radius, fill=(156, 39, 176))
+            # 按钮阴影
+            shadow_rect = (buttons["easy_ocr"][0] + shadow_offset, buttons["easy_ocr"][1] + shadow_offset, 
+                          buttons["easy_ocr"][2] + shadow_offset, buttons["easy_ocr"][3] + shadow_offset)
+            draw_rounded_rectangle(draw, shadow_rect, radius, fill=(0, 0, 0, 50))
+            # 绘制EasyOCR图标
+            easy_ocr_center = (buttons["easy_ocr"][0] + button_size//2, buttons["easy_ocr"][1] + button_size//2)
+            draw_easy_ocr_icon(draw, easy_ocr_center, button_size//2, (255, 255, 255))
+            # 按钮文字
+            if font:
+                draw.text((buttons["easy_ocr"][0] + 4, buttons["easy_ocr"][1] + 28), "Easy", font=font, fill=(255, 255, 255))
+            else:
+                draw.text((buttons["easy_ocr"][0] + 4, buttons["easy_ocr"][1] + 28), "Easy", fill=(255, 255, 255))
             
             # 复制按钮 - 绿色
-            draw.rectangle([buttons["copy"][0], buttons["copy"][1], buttons["copy"][2], buttons["copy"][3]], fill=(76, 175, 80))
+            draw_rounded_rectangle(draw, buttons["copy"], radius, fill=(76, 175, 80))
+            # 按钮阴影
+            shadow_rect = (buttons["copy"][0] + shadow_offset, buttons["copy"][1] + shadow_offset, 
+                          buttons["copy"][2] + shadow_offset, buttons["copy"][3] + shadow_offset)
+            draw_rounded_rectangle(draw, shadow_rect, radius, fill=(0, 0, 0, 50))
+            # 绘制复制图标
+            copy_center = (buttons["copy"][0] + button_size//2, buttons["copy"][1] + button_size//2)
+            draw_copy_icon(draw, copy_center, button_size//2, (255, 255, 255))
+            # 按钮文字
             if font:
-                draw.text((buttons["copy"][0] + 6, buttons["copy"][1] + 12), "复制", font=font, fill=(255, 255, 255))
+                draw.text((buttons["copy"][0] + 6, buttons["copy"][1] + 28), "复制", font=font, fill=(255, 255, 255))
             else:
-                draw.text((buttons["copy"][0] + 6, buttons["copy"][1] + 12), "复制", fill=(255, 255, 255))
+                draw.text((buttons["copy"][0] + 6, buttons["copy"][1] + 28), "复制", fill=(255, 255, 255))
             
             # 取消按钮 - 红色
-            draw.rectangle([buttons["cancel"][0], buttons["cancel"][1], buttons["cancel"][2], buttons["cancel"][3]], fill=(244, 67, 54))
+            draw_rounded_rectangle(draw, buttons["cancel"], radius, fill=(244, 67, 54))
+            # 按钮阴影
+            shadow_rect = (buttons["cancel"][0] + shadow_offset, buttons["cancel"][1] + shadow_offset, 
+                          buttons["cancel"][2] + shadow_offset, buttons["cancel"][3] + shadow_offset)
+            draw_rounded_rectangle(draw, shadow_rect, radius, fill=(0, 0, 0, 50))
+            # 绘制取消图标
+            cancel_center = (buttons["cancel"][0] + button_size//2, buttons["cancel"][1] + button_size//2)
+            draw_cancel_icon(draw, cancel_center, button_size//2, (255, 255, 255))
+            # 按钮文字
             if font:
-                draw.text((buttons["cancel"][0] + 6, buttons["cancel"][1] + 12), "取消", font=font, fill=(255, 255, 255))
+                draw.text((buttons["cancel"][0] + 6, buttons["cancel"][1] + 28), "取消", font=font, fill=(255, 255, 255))
             else:
-                draw.text((buttons["cancel"][0] + 6, buttons["cancel"][1] + 12), "取消", fill=(255, 255, 255))
+                draw.text((buttons["cancel"][0] + 6, buttons["cancel"][1] + 28), "取消", fill=(255, 255, 255))
             
             # 转换回OpenCV格式
             return cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
@@ -419,13 +523,29 @@ def take_screenshot():
             
             if button_clicked:
                 if button_clicked == "ocr":
-                    # OCR 识别
-                    print("开始 OCR 识别...")
+                    # 百度OCR 识别
+                    print("开始百度OCR 识别...")
                     cv2.destroyAllWindows()
                     # 获取API配置
                     app_id, api_key, secret_key = get_baidu_api_config()
                     # 执行OCR
                     ocr_text = ocr_image(image_path, app_id, api_key, secret_key)
+                    # 显示图片和OCR结果
+                    show_image_with_copy_button(image_path, ocr_text)
+                    # AI 分析
+                    if ocr_text:
+                        openai_api_key = get_openai_api_key()
+                        if openai_api_key:
+                            get_ai_response(ocr_text, openai_api_key)
+                        else:
+                            print("未提供 OpenAI API Key，跳过 AI 分析")
+                    break
+                elif button_clicked == "easy_ocr":
+                    # EasyOCR 识别
+                    print("开始 EasyOCR 识别...")
+                    cv2.destroyAllWindows()
+                    # 执行EasyOCR
+                    ocr_text = easy_ocr_image(image_path)
                     # 显示图片和OCR结果
                     show_image_with_copy_button(image_path, ocr_text)
                     # AI 分析
@@ -447,9 +567,9 @@ def take_screenshot():
                     draw = ImageDraw.Draw(pil_success)
                     # 绘制成功提示
                     if font:
-                        draw.text((copy_button_x + 2, button_y + 12), "✓", font=font, fill=(255, 255, 255))
+                        draw.text((copy_button_x + 2, button_y + 28), "✓", font=font, fill=(255, 255, 255))
                     else:
-                        draw.text((copy_button_x + 2, button_y + 12), "✓", fill=(255, 255, 255))
+                        draw.text((copy_button_x + 2, button_y + 28), "✓", fill=(255, 255, 255))
                     # 转换回OpenCV格式
                     success_img = cv2.cvtColor(np.array(pil_success), cv2.COLOR_RGB2BGR)
                     cv2.imshow("Frozen Screenshot", success_img)
