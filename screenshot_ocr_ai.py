@@ -11,6 +11,11 @@ from config import BAIDU_OCR_CONFIG, OPENAI_API_KEY
 def take_screenshot():
     print("请选择截图区域...")
     
+    # 确保screenshots文件夹存在
+    screenshots_dir = "screenshots"
+    if not os.path.exists(screenshots_dir):
+        os.makedirs(screenshots_dir)
+    
     # 捕获整个屏幕
     screenshot = ImageGrab.grab()
     screenshot_np = np.array(screenshot)
@@ -98,9 +103,15 @@ def take_screenshot():
         cropped_img = screenshot_np[y1:y2, x1:x2]
         cropped_img = cv2.cvtColor(cropped_img, cv2.COLOR_BGR2RGB)
         cropped_pil = Image.fromarray(cropped_img)
-        cropped_pil.save('screenshot.png')
-        print(f"截图已保存为 screenshot.png (区域: {x1},{y1} 到 {x2},{y2})")
-        return 'screenshot.png'
+        
+        # 生成唯一的文件名
+        import time
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        image_path = os.path.join(screenshots_dir, f"screenshot_{timestamp}.png")
+        
+        cropped_pil.save(image_path)
+        print(f"截图已保存为 {image_path} (区域: {x1},{y1} 到 {x2},{y2})")
+        return image_path
     else:
         print("无效的截图区域")
         return None
