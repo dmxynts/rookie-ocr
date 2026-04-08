@@ -1,0 +1,7 @@
+Pillow
+baidu-aip
+pyscreenshot
+opencv-python
+numpy
+openai
+pyperclip
