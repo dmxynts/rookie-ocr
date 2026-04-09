@@ -3,15 +3,25 @@ import os
 import base64
 import json
 import requests
+import ctypes
+from ctypes import wintypes
 from datetime import datetime
 from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QHBoxLayout, QMessageBox
 from PyQt5.QtCore import Qt, QRect, QRectF, QPoint
-from PyQt5.QtGui import QPainter, QPen, QColor, QPixmap, QPainterPath
+from PyQt5.QtGui import QPainter, QPen, QColor, QPixmap, QPainterPath, QIcon
 import win32gui
 import win32ui
 import win32con
 from PIL import Image
 from config import BAIDU_OCR_CONFIG
+
+# Windows DWM API 常量
+DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+DWMWA_MICA_EFFECT = 1029
+DWMWA_SYSTEMBACKDROP_TYPE = 38
+DWMSBT_MAINWINDOW = 2
+DWMSBT_TRANSIENTWINDOW = 3
+DWMSBT_TABBEDWINDOW = 4
 
 class SnippingTool(QWidget):
     def __init__(self):
@@ -136,146 +146,135 @@ class SnippingTool(QWidget):
             self.update()
             self.show_toolbar()
 
+    def enable_acrylic_effect(self, hwnd):
+        """启用 Windows 11 亚克力/云母效果"""
+        try:
+            # 加载 dwmapi.dll
+            dwmapi = ctypes.windll.dwmapi
+            
+            # 启用深色模式
+            dark_mode = ctypes.c_int(1)
+            dwmapi.DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_USE_IMMERSIVE_DARK_MODE,
+                ctypes.byref(dark_mode),
+                ctypes.sizeof(dark_mode)
+            )
+            
+            # 设置系统背景类型为亚克力效果 (Windows 11)
+            if hasattr(ctypes.windll.user32, 'SetWindowCompositionAttribute'):
+                # 使用 SetWindowCompositionAttribute 实现亚克力效果
+                accent_policy = ctypes.c_int(3)  # ACCENT_ENABLE_ACRYLICBLURBEHIND
+                accent_flags = ctypes.c_int(0)
+                accent_color = ctypes.c_int(0x99000000)  # 半透明黑色
+                
+                class ACCENT_POLICY(ctypes.Structure):
+                    _fields_ = [
+                        ("AccentState", ctypes.c_int),
+                        ("AccentFlags", ctypes.c_int),
+                        ("GradientColor", ctypes.c_int),
+                        ("AnimationId", ctypes.c_int)
+                    ]
+                
+                class WINDOWCOMPOSITIONATTRIBDATA(ctypes.Structure):
+                    _fields_ = [
+                        ("Attribute", ctypes.c_int),
+                        ("Data", ctypes.POINTER(ACCENT_POLICY)),
+                        ("SizeOfData", ctypes.c_size_t)
+                    ]
+                
+                accent = ACCENT_POLICY(3, 0, 0x99000000, 0)
+                data = WINDOWCOMPOSITIONATTRIBDATA(19, ctypes.pointer(accent), ctypes.sizeof(accent))
+                
+                ctypes.windll.user32.SetWindowCompositionAttribute(hwnd, ctypes.pointer(data))
+        except Exception as e:
+            print(f"启用亚克力效果失败: {e}")
+
     def show_toolbar(self):
         if self.toolbar:
             self.toolbar.hide()
         
         self.toolbar = QWidget(self)
-        self.toolbar.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
-        self.toolbar.setStyleSheet('''
-            QWidget {
-                background-color: rgba(255, 255, 255, 0.95);
+        self.toolbar.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+        self.toolbar.setAttribute(Qt.WA_TranslucentBackground, True)
+        
+        # 启用 Windows 亚克力效果
+        self.toolbar.winId()
+        hwnd = int(self.toolbar.winId())
+        self.enable_acrylic_effect(hwnd)
+        
+        # 亚克力风格按钮样式
+        acrylic_btn_style = '''
+            QPushButton {
+                background-color: rgba(255, 255, 255, 0.15);
+                border: none;
                 border-radius: 8px;
-                border: 1px solid #e0e0e0;
-                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+                font-size: 14px;
+                padding: 4px;
+                color: rgba(255, 255, 255, 0.9);
             }
-        ''')
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 0.25);
+                border: none;
+            }
+            QPushButton:pressed {
+                background-color: rgba(255, 255, 255, 0.35);
+                border: none;
+            }
+        '''
         
         layout = QHBoxLayout(self.toolbar)
-        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
         
         # 复制按钮
-        btn_copy = QPushButton("📋")
+        btn_copy = QPushButton()
+        btn_copy.setIcon(QIcon("icons/copy.svg"))
         btn_copy.setToolTip("复制到剪贴板")
-        btn_copy.setFixedSize(28, 28)
-        btn_copy.setStyleSheet('''
-            QPushButton {
-                background: none;
-                border: none;
-                border-radius: 4px;
-                font-size: 14px;
-                padding: 2px;
-            }
-            QPushButton:hover {
-                background-color: #f0f0f0;
-            }
-        ''')
+        btn_copy.setFixedSize(32, 32)
+        btn_copy.setStyleSheet(acrylic_btn_style)
         
         # 保存按钮
-        btn_save = QPushButton("💾")
+        btn_save = QPushButton()
+        btn_save.setIcon(QIcon("icons/save.svg"))
         btn_save.setToolTip("保存到文件")
-        btn_save.setFixedSize(28, 28)
-        btn_save.setStyleSheet('''
-            QPushButton {
-                background: none;
-                border: none;
-                border-radius: 4px;
-                font-size: 14px;
-                padding: 2px;
-            }
-            QPushButton:hover {
-                background-color: #f0f0f0;
-            }
-        ''')
+        btn_save.setFixedSize(32, 32)
+        btn_save.setStyleSheet(acrylic_btn_style)
         btn_save.clicked.connect(self.confirm_screenshot)
         
-        # 分隔线
-        separator = QWidget()
-        separator.setFixedSize(1, 20)
-        separator.setStyleSheet('background-color: #e0e0e0;')
-        
         # 标注工具
-        btn_pen = QPushButton("✏️")
+        btn_pen = QPushButton()
+        btn_pen.setIcon(QIcon("icons/pen.svg"))
         btn_pen.setToolTip("画笔")
-        btn_pen.setFixedSize(28, 28)
-        btn_pen.setStyleSheet('''
-            QPushButton {
-                background: none;
-                border: none;
-                border-radius: 4px;
-                font-size: 14px;
-                padding: 2px;
-            }
-            QPushButton:hover {
-                background-color: #f0f0f0;
-            }
-        ''')
+        btn_pen.setFixedSize(32, 32)
+        btn_pen.setStyleSheet(acrylic_btn_style)
         
-        btn_text = QPushButton("T")
+        btn_text = QPushButton()
+        btn_text.setIcon(QIcon("icons/text.svg"))
         btn_text.setToolTip("文本")
-        btn_text.setFixedSize(28, 28)
-        btn_text.setStyleSheet('''
-            QPushButton {
-                background: none;
-                border: none;
-                border-radius: 4px;
-                font-size: 14px;
-                font-weight: bold;
-                padding: 2px;
-            }
-            QPushButton:hover {
-                background-color: #f0f0f0;
-            }
-        ''')
-        
-        # 分隔线
-        separator2 = QWidget()
-        separator2.setFixedSize(1, 20)
-        separator2.setStyleSheet('background-color: #e0e0e0;')
+        btn_text.setFixedSize(32, 32)
+        btn_text.setStyleSheet(acrylic_btn_style)
         
         # OCR按钮
-        btn_ocr = QPushButton("📝")
+        btn_ocr = QPushButton()
+        btn_ocr.setIcon(QIcon("icons/ocr.svg"))
         btn_ocr.setToolTip("OCR识别")
-        btn_ocr.setFixedSize(28, 28)
-        btn_ocr.setStyleSheet('''
-            QPushButton {
-                background: none;
-                border: none;
-                border-radius: 4px;
-                font-size: 14px;
-                padding: 2px;
-            }
-            QPushButton:hover {
-                background-color: #f0f0f0;
-            }
-        ''')
+        btn_ocr.setFixedSize(32, 32)
+        btn_ocr.setStyleSheet(acrylic_btn_style)
         btn_ocr.clicked.connect(self.perform_ocr)
         
         # 取消按钮
-        btn_cancel = QPushButton("✕")
+        btn_cancel = QPushButton()
+        btn_cancel.setIcon(QIcon("icons/cancel.svg"))
         btn_cancel.setToolTip("取消")
-        btn_cancel.setFixedSize(28, 28)
-        btn_cancel.setStyleSheet('''
-            QPushButton {
-                background: none;
-                border: none;
-                border-radius: 4px;
-                font-size: 14px;
-                padding: 2px;
-            }
-            QPushButton:hover {
-                background-color: #f0f0f0;
-            }
-        ''')
+        btn_cancel.setFixedSize(32, 32)
+        btn_cancel.setStyleSheet(acrylic_btn_style)
         btn_cancel.clicked.connect(self.cancel_screenshot)
         
         layout.addWidget(btn_copy)
         layout.addWidget(btn_save)
-        layout.addWidget(separator)
         layout.addWidget(btn_pen)
         layout.addWidget(btn_text)
-        layout.addWidget(separator2)
         layout.addWidget(btn_ocr)
         layout.addWidget(btn_cancel)
         
