@@ -1,13 +1,17 @@
 import sys
 import os
+import base64
+import json
+import requests
 from datetime import datetime
-from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QHBoxLayout
+from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QHBoxLayout, QMessageBox
 from PyQt5.QtCore import Qt, QRect, QRectF, QPoint
 from PyQt5.QtGui import QPainter, QPen, QColor, QPixmap, QPainterPath
 import win32gui
 import win32ui
 import win32con
 from PIL import Image
+from config import BAIDU_OCR_CONFIG
 
 class SnippingTool(QWidget):
     def __init__(self):
@@ -230,6 +234,24 @@ class SnippingTool(QWidget):
         separator2.setFixedSize(1, 20)
         separator2.setStyleSheet('background-color: #e0e0e0;')
         
+        # OCR按钮
+        btn_ocr = QPushButton("📝")
+        btn_ocr.setToolTip("OCR识别")
+        btn_ocr.setFixedSize(28, 28)
+        btn_ocr.setStyleSheet('''
+            QPushButton {
+                background: none;
+                border: none;
+                border-radius: 4px;
+                font-size: 14px;
+                padding: 2px;
+            }
+            QPushButton:hover {
+                background-color: #f0f0f0;
+            }
+        ''')
+        btn_ocr.clicked.connect(self.perform_ocr)
+        
         # 取消按钮
         btn_cancel = QPushButton("✕")
         btn_cancel.setToolTip("取消")
@@ -254,6 +276,7 @@ class SnippingTool(QWidget):
         layout.addWidget(btn_pen)
         layout.addWidget(btn_text)
         layout.addWidget(separator2)
+        layout.addWidget(btn_ocr)
         layout.addWidget(btn_cancel)
         
         self.toolbar.adjustSize()
@@ -285,6 +308,71 @@ class SnippingTool(QWidget):
 
     def cancel_screenshot(self):
         self.close()
+
+    def perform_ocr(self):
+        """使用百度OCR API识别截图中的文字"""
+        # 从配置文件读取密钥
+        api_key = BAIDU_OCR_CONFIG.get("API_KEY", "")
+        secret_key = BAIDU_OCR_CONFIG.get("SECRET_KEY", "")
+        
+        if not api_key or not secret_key:
+            QMessageBox.critical(self, "错误", "请在config.py中配置百度OCR的API_KEY和SECRET_KEY")
+            return
+        
+        # 获取选区截图
+        cropped = self.screen_pixmap.copy(self.selected_rect)
+        
+        # 保存为临时文件
+        temp_ocr_path = "temp_ocr.png"
+        cropped.save(temp_ocr_path)
+        
+        # 读取图片并转为base64
+        with open(temp_ocr_path, 'rb') as f:
+            img_data = base64.b64encode(f.read()).decode('utf-8')
+        
+        try:
+            # 获取access_token
+            token_url = f"https://aip.baidubce.com/oauth/2.0/token?grant_type=client_credentials&client_id={api_key}&client_secret={secret_key}"
+            token_response = requests.post(token_url, timeout=10)
+            access_token = token_response.json().get("access_token")
+            
+            if not access_token:
+                QMessageBox.critical(self, "错误", "获取access_token失败，请检查API Key和Secret Key")
+                return
+            
+            # 调用OCR接口
+            ocr_url = f"https://aip.baidubce.com/rest/2.0/ocr/v1/general_basic?access_token={access_token}"
+            headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+            params = {"image": img_data}
+            
+            response = requests.post(ocr_url, headers=headers, data=params, timeout=30)
+            result = response.json()
+            
+            if 'words_result' in result and len(result['words_result']) > 0:
+                # 提取识别的文字
+                text_lines = [item['words'] for item in result['words_result']]
+                recognized_text = '\n'.join(text_lines)
+                
+                # 显示结果
+                msg_box = QMessageBox(self)
+                msg_box.setWindowTitle("OCR识别结果")
+                msg_box.setText(recognized_text)
+                msg_box.setTextInteractionFlags(Qt.TextSelectableByMouse)
+                msg_box.exec_()
+                
+                # 复制到剪贴板
+                clipboard = QApplication.clipboard()
+                clipboard.setText(recognized_text)
+                QMessageBox.information(self, "提示", "识别结果已复制到剪贴板")
+            else:
+                QMessageBox.information(self, "提示", "未识别到文字")
+                
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"OCR识别失败: {str(e)}")
+        finally:
+            # 清理临时文件
+            if os.path.exists(temp_ocr_path):
+                os.remove(temp_ocr_path)
 
     def closeEvent(self, event):
         if os.path.exists("temp_ss.png"):
