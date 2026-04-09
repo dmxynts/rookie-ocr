@@ -1,5 +1,7 @@
 import sys
 import os
+import ctypes
+from ctypes import wintypes
 from datetime import datetime
 from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QHBoxLayout, QMessageBox
 from PyQt5.QtCore import Qt, QRect, QRectF, QPoint
