@@ -68,23 +68,42 @@ class SnippingTool(QWidget):
     # 情况1：正在拖拽中 -> 画一个简单的虚线矩形框
         if self.is_selecting:
             rect = QRect(self.start_point, self.end_point).normalized()
-            painter.setPen(QPen(QColor(255, 255, 255), 2, Qt.DashLine))
+            painter.setPen(QPen(QColor(0, 122, 255), 2, Qt.SolidLine))
             painter.drawRect(rect)
             return
 
-    # 情况2：选区已确认 -> 画遮罩 + 实线白边 + 尺寸标签
+    # 情况2：选区已确认 -> 画遮罩 + 蓝色边框 + 控制点 + 尺寸标签
         if self.selection_finished and not self.selected_rect.isNull():
+            # 画半透明遮罩
             path = QPainterPath()
             path.addRect(QRectF(self.rect()))
             path.addRect(QRectF(self.selected_rect))
-            painter.fillPath(path, QColor(0, 0, 0, 120))
+            painter.fillPath(path, QColor(0, 0, 0, 100))
 
-            painter.setPen(QPen(QColor(255, 255, 255), 2, Qt.SolidLine))
+            # 画蓝色边框
+            painter.setPen(QPen(QColor(0, 122, 255), 2, Qt.SolidLine))
             painter.drawRect(self.selected_rect)
 
+            # 画四个角落的控制点
+            corner_size = 6
+            corners = [
+                (self.selected_rect.topLeft(), corner_size),
+                (self.selected_rect.topRight(), corner_size),
+                (self.selected_rect.bottomLeft(), corner_size),
+                (self.selected_rect.bottomRight(), corner_size)
+            ]
+            painter.setBrush(QColor(0, 122, 255))
+            for pos, size in corners:
+                painter.drawRect(pos.x() - size//2, pos.y() - size//2, size, size)
+
+            # 画尺寸标签
             painter.setPen(QColor(255, 255, 255))
+            painter.setBrush(QColor(0, 122, 255, 200))
             size_text = f"{self.selected_rect.width()} x {self.selected_rect.height()}"
-            painter.drawText(self.selected_rect.bottomRight() + QPoint(5, -5), size_text)
+            text_rect = painter.boundingRect(0, 0, 100, 20, Qt.AlignLeft, size_text)
+            text_pos = self.selected_rect.bottomRight() + QPoint(10, -25)
+            painter.drawRect(text_rect.translated(text_pos))
+            painter.drawText(text_pos.x() + 4, text_pos.y() + 15, size_text)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -120,24 +139,123 @@ class SnippingTool(QWidget):
         
         self.toolbar = QWidget(self)
         self.toolbar.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
-        self.toolbar.setStyleSheet("background: transparent; border: none;")
+        self.toolbar.setStyleSheet('''
+            QWidget {
+                background-color: rgba(255, 255, 255, 0.95);
+                border-radius: 8px;
+                border: 1px solid #e0e0e0;
+                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            }
+        ''')
         
         layout = QHBoxLayout(self.toolbar)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(4)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(6)
         
-        btn_ok = QPushButton("✓")
-        btn_ok.clicked.connect(self.confirm_screenshot)
-        btn_ok.setFixedSize(24, 24)
-        btn_ok.setStyleSheet('QPushButton { background-color: #4CAF50; color: white; border: none; border-radius: 4px; font-size: 12px; font-weight: bold; }')
+        # 复制按钮
+        btn_copy = QPushButton("📋")
+        btn_copy.setToolTip("复制到剪贴板")
+        btn_copy.setFixedSize(28, 28)
+        btn_copy.setStyleSheet('''
+            QPushButton {
+                background: none;
+                border: none;
+                border-radius: 4px;
+                font-size: 14px;
+                padding: 2px;
+            }
+            QPushButton:hover {
+                background-color: #f0f0f0;
+            }
+        ''')
         
-        btn_cancel = QPushButton("✗")
+        # 保存按钮
+        btn_save = QPushButton("💾")
+        btn_save.setToolTip("保存到文件")
+        btn_save.setFixedSize(28, 28)
+        btn_save.setStyleSheet('''
+            QPushButton {
+                background: none;
+                border: none;
+                border-radius: 4px;
+                font-size: 14px;
+                padding: 2px;
+            }
+            QPushButton:hover {
+                background-color: #f0f0f0;
+            }
+        ''')
+        btn_save.clicked.connect(self.confirm_screenshot)
+        
+        # 分隔线
+        separator = QWidget()
+        separator.setFixedSize(1, 20)
+        separator.setStyleSheet('background-color: #e0e0e0;')
+        
+        # 标注工具
+        btn_pen = QPushButton("✏️")
+        btn_pen.setToolTip("画笔")
+        btn_pen.setFixedSize(28, 28)
+        btn_pen.setStyleSheet('''
+            QPushButton {
+                background: none;
+                border: none;
+                border-radius: 4px;
+                font-size: 14px;
+                padding: 2px;
+            }
+            QPushButton:hover {
+                background-color: #f0f0f0;
+            }
+        ''')
+        
+        btn_text = QPushButton("T")
+        btn_text.setToolTip("文本")
+        btn_text.setFixedSize(28, 28)
+        btn_text.setStyleSheet('''
+            QPushButton {
+                background: none;
+                border: none;
+                border-radius: 4px;
+                font-size: 14px;
+                font-weight: bold;
+                padding: 2px;
+            }
+            QPushButton:hover {
+                background-color: #f0f0f0;
+            }
+        ''')
+        
+        # 分隔线
+        separator2 = QWidget()
+        separator2.setFixedSize(1, 20)
+        separator2.setStyleSheet('background-color: #e0e0e0;')
+        
+        # 取消按钮
+        btn_cancel = QPushButton("✕")
+        btn_cancel.setToolTip("取消")
+        btn_cancel.setFixedSize(28, 28)
+        btn_cancel.setStyleSheet('''
+            QPushButton {
+                background: none;
+                border: none;
+                border-radius: 4px;
+                font-size: 14px;
+                padding: 2px;
+            }
+            QPushButton:hover {
+                background-color: #f0f0f0;
+            }
+        ''')
         btn_cancel.clicked.connect(self.cancel_screenshot)
-        btn_cancel.setFixedSize(24, 24)
-        btn_cancel.setStyleSheet('QPushButton { background-color: #f44336; color: white; border: none; border-radius: 4px; font-size: 12px; font-weight: bold; }')
         
+        layout.addWidget(btn_copy)
+        layout.addWidget(btn_save)
+        layout.addWidget(separator)
+        layout.addWidget(btn_pen)
+        layout.addWidget(btn_text)
+        layout.addWidget(separator2)
         layout.addWidget(btn_cancel)
-        layout.addWidget(btn_ok)
         
         self.toolbar.adjustSize()
         
