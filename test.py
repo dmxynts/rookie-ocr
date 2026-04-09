@@ -65,14 +65,20 @@ class SnippingTool(QWidget):
         painter = QPainter(self)
         painter.drawPixmap(0, 0, self.screen_pixmap)
 
-    # 情况1：正在拖拽中 -> 画一个简单的虚线矩形框
+    # 情况1：正在拖拽中 -> 画遮罩 + 蓝色边框
         if self.is_selecting:
             rect = QRect(self.start_point, self.end_point).normalized()
+            # 画半透明遮罩
+            path = QPainterPath()
+            path.addRect(QRectF(self.rect()))
+            path.addRect(QRectF(rect))
+            painter.fillPath(path, QColor(0, 0, 0, 100))
+            # 画蓝色边框
             painter.setPen(QPen(QColor(0, 122, 255), 2, Qt.SolidLine))
             painter.drawRect(rect)
             return
 
-    # 情况2：选区已确认 -> 画遮罩 + 蓝色边框 + 控制点 + 尺寸标签
+    # 情况2：选区已确认 -> 画遮罩 + 蓝色边框 + 控制点
         if self.selection_finished and not self.selected_rect.isNull():
             # 画半透明遮罩
             path = QPainterPath()
@@ -96,14 +102,7 @@ class SnippingTool(QWidget):
             for pos, size in corners:
                 painter.drawRect(pos.x() - size//2, pos.y() - size//2, size, size)
 
-            # 画尺寸标签
-            painter.setPen(QColor(255, 255, 255))
-            painter.setBrush(QColor(0, 122, 255, 200))
-            size_text = f"{self.selected_rect.width()} x {self.selected_rect.height()}"
-            text_rect = painter.boundingRect(0, 0, 100, 20, Qt.AlignLeft, size_text)
-            text_pos = self.selected_rect.bottomRight() + QPoint(10, -25)
-            painter.drawRect(text_rect.translated(text_pos))
-            painter.drawText(text_pos.x() + 4, text_pos.y() + 15, size_text)
+
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -285,11 +284,7 @@ class SnippingTool(QWidget):
         self.close()
 
     def cancel_screenshot(self):
-        self.selection_finished = False
-        self.selected_rect = QRect()
-        if self.toolbar:
-            self.toolbar.hide()
-        self.update()
+        self.close()
 
     def closeEvent(self, event):
         if os.path.exists("temp_ss.png"):
