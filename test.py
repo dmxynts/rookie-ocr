@@ -1,10 +1,5 @@
 import sys
 import os
-import base64
-import json
-import requests
-import ctypes
-from ctypes import wintypes
 from datetime import datetime
 from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QHBoxLayout, QMessageBox
 from PyQt5.QtCore import Qt, QRect, QRectF, QPoint
@@ -252,16 +247,25 @@ class SnippingTool(QWidget):
         btn_text = QPushButton()
         btn_text.setIcon(QIcon("icons/text.svg"))
         btn_text.setToolTip("文本")
-        btn_text.setFixedSize(32, 32)
-        btn_text.setStyleSheet(acrylic_btn_style)
+        btn_text.setFixedSize(28, 28)
+        btn_text.setStyleSheet('''
+            QPushButton {
+                background: none;
+                border: none;
+                border-radius: 4px;
+                font-size: 14px;
+                font-weight: bold;
+                padding: 2px;
+            }
+            QPushButton:hover {
+                background-color: #f0f0f0;
+            }
+        ''')
         
-        # OCR按钮
-        btn_ocr = QPushButton()
-        btn_ocr.setIcon(QIcon("icons/ocr.svg"))
-        btn_ocr.setToolTip("OCR识别")
-        btn_ocr.setFixedSize(32, 32)
-        btn_ocr.setStyleSheet(acrylic_btn_style)
-        btn_ocr.clicked.connect(self.perform_ocr)
+        # 分隔线
+        separator2 = QWidget()
+        separator2.setFixedSize(1, 20)
+        separator2.setStyleSheet('background-color: #e0e0e0;')
         
         # 取消按钮
         btn_cancel = QPushButton()
@@ -275,7 +279,7 @@ class SnippingTool(QWidget):
         layout.addWidget(btn_save)
         layout.addWidget(btn_pen)
         layout.addWidget(btn_text)
-        layout.addWidget(btn_ocr)
+        layout.addWidget(separator2)
         layout.addWidget(btn_cancel)
         
         self.toolbar.adjustSize()
